@@ -1,0 +1,41 @@
+{
+  "name": "swagger-ts-generator",
+  "version": "0.1.0",
+  "description": "Swagger TS Generator",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "generate": "ts-node src/index.ts",
+    "prepare": "yarn build",
+    "clean": "rimraf dist"
+  },
+  "keywords": [],
+  "author": "Arie Sorkin",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^18.15.0",
+    "jest": "^29.5.0",
+    "ts-jest": "^29.1.0",
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.2"
+  },
+  "peerDependencies": {},
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "swagger-typescript-api": "^13.0.22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Noboxer/swagger-ts-generator.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Noboxer/swagger-ts-generator/issues"
+  },
+  "homepage": "https://github.com/Noboxer/swagger-ts-generator#readme"
+}
