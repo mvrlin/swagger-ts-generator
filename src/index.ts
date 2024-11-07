@@ -1,9 +1,11 @@
 import { generateApiClient } from "./openapi";
 import dotenv from "dotenv";
 import path from "path";
+import { generateTrpcClient } from "./trpc-client-generator";
 
 // Try multiple possible .env locations
 const possibleEnvPaths = [
+  path.resolve(process.cwd(), "example/.env"), // Add example directory path
   path.resolve(process.cwd(), ".env"), // Current directory
   path.resolve(process.cwd(), "../.env"), // One level up
   path.resolve(process.cwd(), "../../.env"), // Two levels up
@@ -51,12 +53,16 @@ const absoluteGeneratedDir = path.resolve(
 
 generateApiClient({
   apiName: process.env.API_NAME,
-  generatedDir: absoluteGeneratedDir, // Use absolute path
+  generatedDir: absoluteGeneratedDir,
   swaggerUrl: process.env.SWAGGER_URL,
 });
+
+generateTrpcClient(absoluteGeneratedDir);
 
 console.log(`API files generated successfully. 
     Generated directory: ${process.env.GENERATED_DIR}
     Swagger URL: ${process.env.SWAGGER_URL}
     API Name: ${process.env.API_NAME}
     `);
+
+export { generateApiClient };

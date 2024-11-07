@@ -12,3 +12,7 @@ coverage/
 !.yarn/sdks
 !.yarn/versions
 .pnp.* 
+
+.env
+./__generated__
+./example/__generated__
