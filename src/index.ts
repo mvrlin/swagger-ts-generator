@@ -4,80 +4,79 @@ import path from "path";
 import { generateTrpcClient } from "./trpc-client-generator";
 import fs from "fs";
 
-// Try multiple possible .env locations
 const possibleEnvPaths = [
-  path.resolve(process.cwd(), "example/.env"), // Add example directory path
-  path.resolve(process.cwd(), ".env"), // Current directory
-  path.resolve(process.cwd(), "../.env"), // One level up
-  path.resolve(process.cwd(), "../../.env"), // Two levels up
-  path.resolve(process.cwd(), "../../../.env"), // Three levels up
-];
+  path.resolve(process.cwd(), "example/.env"),
+  path.resolve(process.cwd(), ".env"),
+  path.resolve(process.cwd(), "../.env"),
+  path.resolve(process.cwd(), "../../.env"),
+  path.resolve(process.cwd(), "../../../.env"),
+].map((p) => ({ path: p, label: path.relative(process.cwd(), p) }));
 
+// Load environment variables
 let envLoaded = false;
-for (const envPath of possibleEnvPaths) {
-  console.log("Trying .env file at:", envPath);
+for (const { path: envPath, label } of possibleEnvPaths) {
+  console.log(`Checking .env at: ${label}`);
   const result = dotenv.config({ path: envPath });
   if (!result.error) {
     envLoaded = true;
-    console.log("Successfully loaded .env from:", envPath);
+    console.log(`Loaded .env from: ${label}`);
     break;
   }
 }
 
 if (!envLoaded) {
-  console.warn(
-    "No .env file found. Checking for environment variables directly..."
-  );
+  console.warn("No .env file found. Using environment variables directly...");
 }
 
-// Add debug logging for environment variables
-console.log("Environment variables loaded:", {
+// Required environment variables
+const requiredEnvVars = {
   GENERATED_DIR: process.env.GENERATED_DIR,
   SWAGGER_URL: process.env.SWAGGER_URL,
   API_NAME: process.env.API_NAME,
-});
+} as const;
 
-if (
-  !process.env.GENERATED_DIR ||
-  !process.env.SWAGGER_URL ||
-  !process.env.API_NAME
-) {
-  // !TODO: create/add env vars
-  throw new Error("GENERATED_DIR, SWAGGER_URL and API_NAME must be set");
+// Validate environment variables
+const missingVars = Object.entries(requiredEnvVars)
+  .filter(([, value]) => !value)
+  .map(([key]) => key);
+
+if (missingVars.length > 0) {
+  throw new Error(
+    `Missing required environment variables: ${missingVars.join(", ")}`
+  );
 }
 
-// Convert relative path to absolute path relative to the project root
+// Resolve paths
 const projectRoot = path.resolve(process.cwd(), "../../");
 const absoluteGeneratedDir = path.resolve(
   projectRoot,
-  process.env.GENERATED_DIR!
+  requiredEnvVars.GENERATED_DIR!
 );
+const generatedDir = (() => {
+  const baseDir = path.resolve(absoluteGeneratedDir, "src");
+  const srcDir = path.resolve(baseDir, "src");
+  return fs.existsSync(srcDir) ? srcDir : baseDir;
+})();
 
+const trpcRoot = (() => {
+  const srcDir = path.resolve(projectRoot, "src");
+  return fs.existsSync(srcDir) ? srcDir : projectRoot;
+})();
 
-// check if absoluteGeneratedDir/src exists and use it if it does
-let generatedDir = absoluteGeneratedDir;
-if (fs.existsSync(path.resolve(generatedDir, "./src"))) {
-  generatedDir = path.resolve(generatedDir, "./src");
-}
-
+// Generate clients
 generateApiClient({
-  apiName: process.env.API_NAME,
+  apiName: requiredEnvVars.API_NAME!,
   generatedDir,
-  swaggerUrl: process.env.SWAGGER_URL,
+  swaggerUrl: requiredEnvVars.SWAGGER_URL!,
 });
-
-
-let trpcRoot = path.resolve(projectRoot, "./src");
-if (!fs.existsSync(trpcRoot)) {
-  trpcRoot = projectRoot;
-}
 
 generateTrpcClient(trpcRoot);
 
-console.log(`API files generated successfully. 
-    Generated directory: ${process.env.GENERATED_DIR}
-    Swagger URL: ${process.env.SWAGGER_URL}
-    API Name: ${process.env.API_NAME}
-    `);
+console.log(`
+API files generated successfully:
+  Generated directory: ${generatedDir}
+  Swagger URL: ${requiredEnvVars.SWAGGER_URL}
+  API Name: ${requiredEnvVars.API_NAME}
+`);
 
 export { generateApiClient };
