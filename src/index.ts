@@ -1,8 +1,9 @@
 import { generateApiClient } from "./openapi";
 import dotenv from "dotenv";
+import path from "path";
 
-// Load environment variables from .env file
-dotenv.config();
+// Load environment variables from .env file in the executing package's directory
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 if (
   !process.env.GENERATED_DIR ||
