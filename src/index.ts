@@ -4,12 +4,22 @@ import dotenv from "dotenv";
 // Load environment variables from .env file
 dotenv.config();
 
-generateApiClient(
-  {
-    apiName: "LajitApi",
-    generatedDir: "./__generated__",
-    swaggerUrl: "https://back.lajit.com/swagger/doc.json",
-  }
-);
+if (
+  !process.env.GENERATED_DIR ||
+  !process.env.SWAGGER_URL ||
+  !process.env.API_NAME
+) {
+  throw new Error("GENERATED_DIR, SWAGGER_URL and API_NAME must be set");
+}
 
-console.log("Hello, world!");
+generateApiClient({
+  apiName: process.env.API_NAME,
+  generatedDir: process.env.GENERATED_DIR,
+  swaggerUrl: process.env.SWAGGER_URL,
+});
+
+console.log(`API files generated successfully. 
+    Generated directory: ${process.env.GENERATED_DIR}
+    Swagger URL: ${process.env.SWAGGER_URL}
+    API Name: ${process.env.API_NAME}
+    `);
