@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc",
     "test": "jest",
-    "generate": "yarn install && yarn build && ts-node src/index.ts",
+    "generate": "yarn build && ts-node src/index.ts",
     "run-example": "ts-node example/generate_example.ts",
     "prepare": "yarn build",
     "clean": "rimraf dist"
