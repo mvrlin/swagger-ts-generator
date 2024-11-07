@@ -11,7 +11,7 @@ async function generateClientSide(absoluteGeneratedDir: string) {
   const clientDir = path.resolve(absoluteGeneratedDir, "./_trpc");
   ensureDirExists(clientDir);
 
-  // Generate client.ts
+  // Generate client.ts +
   const clientContent = `import { createTRPCReact } from "@trpc/react-query";
 import { type AppRouter } from "@/server/routers/_app";
 
