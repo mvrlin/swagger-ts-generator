@@ -79,6 +79,9 @@ API files generated successfully:
   Generated directory: ${generatedDir}
   Swagger URL: ${requiredEnvVars.SWAGGER_URL}
   API Name: ${requiredEnvVars.API_NAME}
+  TRPC Server directory: ${trpcServerDir}
+  TRPC Routers directory: ${routersDir}
+  TRPC Templates directory: ${templatesDir}
 `);
 
 export { generateApiClient };
