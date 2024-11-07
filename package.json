@@ -36,7 +36,8 @@
   "peerDependencies": {},
   "dependencies": {
     "dotenv": "^16.4.5",
-    "swagger-typescript-api": "^13.0.22"
+    "swagger-typescript-api": "^13.0.22",
+    "@trpc/react-query": "^10.45.2"
   },
   "repository": {
     "type": "git",
