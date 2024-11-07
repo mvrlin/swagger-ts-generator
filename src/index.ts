@@ -41,6 +41,7 @@ if (
   !process.env.SWAGGER_URL ||
   !process.env.API_NAME
 ) {
+  // !TODO: create/add env vars
   throw new Error("GENERATED_DIR, SWAGGER_URL and API_NAME must be set");
 }
 
@@ -57,7 +58,7 @@ generateApiClient({
   swaggerUrl: process.env.SWAGGER_URL,
 });
 
-generateTrpcClient(absoluteGeneratedDir);
+generateTrpcClient(projectRoot);
 
 console.log(`API files generated successfully. 
     Generated directory: ${process.env.GENERATED_DIR}
