@@ -52,11 +52,7 @@ const absoluteGeneratedDir = path.resolve(
   projectRoot,
   requiredEnvVars.GENERATED_DIR!
 );
-const generatedDir = (() => {
-  const baseDir = path.resolve(absoluteGeneratedDir, "src");
-  const srcDir = path.resolve(baseDir, "src");
-  return fs.existsSync(srcDir) ? srcDir : baseDir;
-})();
+const generatedDir = absoluteGeneratedDir;
 
 const trpcRoot = (() => {
   const srcDir = path.resolve(projectRoot, "src");
