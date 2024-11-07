@@ -97,7 +97,7 @@ async function findAndUpdateRootLayout(absoluteGeneratedDir: string) {
   if (!layoutPath) {
     // If no layout file exists, create one
     layoutPath = path.resolve(appDir, "layout.tsx");
-    const defaultLayout = `import { TRPCProvider } from "${absoluteGeneratedDir}/_trpc";
+    const defaultLayout = `import { TRPCProvider } from "@/_trpc";
 
 export const metadata = {
   title: 'Create Next App',
@@ -129,9 +129,9 @@ export default function RootLayout({
   let content = fs.readFileSync(layoutPath, "utf-8");
 
   // Check if TRPCProvider is already imported
-  if (!content.includes("@/app/_trpc")) {
+  if (!content.includes("@/_trpc")) {
     // Add import statement at the beginning of the file
-    const importStatement = `import { TRPCProvider } from "@/app/_trpc";\n`;
+    const importStatement = `import { TRPCProvider } from "@/_trpc";\n`;
     content = importStatement + content;
 
     // Find the root element that contains children
