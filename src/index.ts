@@ -2,6 +2,7 @@ import { generateApiClient } from "./openapi";
 import dotenv from "dotenv";
 import path from "path";
 import { generateTrpcClient } from "./trpc-client-generator";
+import fs from "fs";
 
 // Try multiple possible .env locations
 const possibleEnvPaths = [
@@ -58,7 +59,13 @@ generateApiClient({
   swaggerUrl: process.env.SWAGGER_URL,
 });
 
-generateTrpcClient(projectRoot);
+
+let trpcRoot = path.resolve(projectRoot, "./src");
+if (!fs.existsSync(trpcRoot)) {
+  trpcRoot = projectRoot;
+}
+
+generateTrpcClient(trpcRoot);
 
 console.log(`API files generated successfully. 
     Generated directory: ${process.env.GENERATED_DIR}
