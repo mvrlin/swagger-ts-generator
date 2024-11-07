@@ -26,7 +26,9 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.0.0"
   },
-  "peerDependencies": {},
+  "peerDependencies": {
+    "@trpc/react-query": "^10.45.2"
+  },
   "dependencies": {
     "@tanstack/react-query": "^4.29.25",
     "@trpc/client": "^10.45.2",
