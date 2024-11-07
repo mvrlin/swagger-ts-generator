@@ -2,8 +2,37 @@ import { generateApiClient } from "./openapi";
 import dotenv from "dotenv";
 import path from "path";
 
-// Load environment variables from .env file in the executing package's directory
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+// Try multiple possible .env locations
+const possibleEnvPaths = [
+  path.resolve(process.cwd(), ".env"), // Current directory
+  path.resolve(process.cwd(), "../.env"), // One level up
+  path.resolve(process.cwd(), "../../.env"), // Two levels up
+  path.resolve(process.cwd(), "../../../.env"), // Three levels up
+];
+
+let envLoaded = false;
+for (const envPath of possibleEnvPaths) {
+  console.log("Trying .env file at:", envPath);
+  const result = dotenv.config({ path: envPath });
+  if (!result.error) {
+    envLoaded = true;
+    console.log("Successfully loaded .env from:", envPath);
+    break;
+  }
+}
+
+if (!envLoaded) {
+  console.warn(
+    "No .env file found. Checking for environment variables directly..."
+  );
+}
+
+// Add debug logging for environment variables
+console.log("Environment variables loaded:", {
+  GENERATED_DIR: process.env.GENERATED_DIR,
+  SWAGGER_URL: process.env.SWAGGER_URL,
+  API_NAME: process.env.API_NAME,
+});
 
 if (
   !process.env.GENERATED_DIR ||
@@ -13,9 +42,16 @@ if (
   throw new Error("GENERATED_DIR, SWAGGER_URL and API_NAME must be set");
 }
 
+// Convert relative path to absolute path relative to the project root
+const projectRoot = path.resolve(process.cwd(), "../../");
+const absoluteGeneratedDir = path.resolve(
+  projectRoot,
+  process.env.GENERATED_DIR!
+);
+
 generateApiClient({
   apiName: process.env.API_NAME,
-  generatedDir: process.env.GENERATED_DIR,
+  generatedDir: absoluteGeneratedDir, // Use absolute path
   swaggerUrl: process.env.SWAGGER_URL,
 });
 
