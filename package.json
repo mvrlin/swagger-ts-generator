@@ -22,10 +22,6 @@
     "@types/jest": "^29.5.0",
     "@types/node": "^18.15.0",
     "@types/react": "^18.3.12",
-    "@trpc/server": "^10.45.2",
-    "@trpc/react-query": "^10.45.2",
-    "@tanstack/react-query": "^4.29.25",
-    "@trpc/client": "^10.45.2",
     "react": "^18.3.1",
     "react-dom": ">=16.8.0",
     "jest": "^29.5.0",
@@ -35,9 +31,12 @@
   },
   "peerDependencies": {},
   "dependencies": {
+    "@trpc/server": "^10.45.2",
+    "@tanstack/react-query": "^4.29.25",
     "dotenv": "^16.4.5",
     "swagger-typescript-api": "^13.0.22",
-    "@trpc/react-query": "^10.45.2"
+    "@trpc/react-query": "^10.45.2",
+    "@trpc/client": "^10.45.2"
   },
   "repository": {
     "type": "git",
