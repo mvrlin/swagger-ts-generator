@@ -34,9 +34,7 @@ function generateApiClient(config: Config = defaultConfig) {
     .then(({ files }) => {
       files.forEach((file) => {
         // Create absolute path for each file
-         
-        
-        
+        console.log("yoooo ", file.fileName);
       });
       console.log("API files generated successfully.");
     })

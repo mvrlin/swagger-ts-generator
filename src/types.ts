@@ -16,5 +16,28 @@ const defaultConfig: Config = {
     `${process.env.NEXT_PUBLIC_API_BASE_URL}/swagger/doc.json`,
   apiName: "MySuperbApi",
 };
+// Type definitions for router generation
+interface RouteConfig {
+  name: string;
+  description: string;
+  procedures: ProcedureConfig[];
+}
 
-export { Config, defaultConfig };
+interface ProcedureConfig {
+  name: string;
+  type: "query" | "mutation";
+  parameters: ParameterConfig[];
+  body?: {
+    schema: string;
+  };
+  response?: {
+    schema: string;
+  };
+}
+
+interface ParameterConfig {
+  name: string;
+  schema: string;
+  required: boolean;
+}
+export { Config, defaultConfig, RouteConfig, ProcedureConfig, ParameterConfig };

@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import path from "path";
 import { generateTrpcClient } from "./trpc-client-generator";
 import fs from "fs";
+import { generateTrpcServer } from "./trpc-server-generator";
 
 const possibleEnvPaths = [
   path.resolve(process.cwd(), "example/.env"),
@@ -66,6 +67,11 @@ generateApiClient({
 });
 
 generateTrpcClient(trpcRoot);
+
+// routersdir
+const trpcServerDir = path.resolve(trpcRoot, "server");
+const routersDir = path.resolve(trpcServerDir, "routers");
+// generateTrpcServer(routersDir, templatesDir, requiredEnvVars.SWAGGER_URL!);
 
 console.log(`
 API files generated successfully:
