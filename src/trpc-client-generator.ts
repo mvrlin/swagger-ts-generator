@@ -97,7 +97,7 @@ async function findAndUpdateRootLayout(absoluteGeneratedDir: string) {
   if (!layoutPath) {
     // If no layout file exists, create one
     layoutPath = path.resolve(appDir, "layout.tsx");
-    const defaultLayout = `import { TRPCProvider } from "@/app/_trpc";
+    const defaultLayout = `import { TRPCProvider } from "${absoluteGeneratedDir}/_trpc";
 
 export const metadata = {
   title: 'Create Next App',

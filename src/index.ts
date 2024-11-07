@@ -53,9 +53,16 @@ const absoluteGeneratedDir = path.resolve(
   process.env.GENERATED_DIR!
 );
 
+
+// check if absoluteGeneratedDir/src exists and use it if it does
+let generatedDir = absoluteGeneratedDir;
+if (fs.existsSync(path.resolve(generatedDir, "./src"))) {
+  generatedDir = path.resolve(generatedDir, "./src");
+}
+
 generateApiClient({
   apiName: process.env.API_NAME,
-  generatedDir: absoluteGeneratedDir,
+  generatedDir,
   swaggerUrl: process.env.SWAGGER_URL,
 });
 
