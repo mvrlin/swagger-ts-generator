@@ -48,14 +48,13 @@ if (missingVars.length > 0) {
 
 // Resolve paths
 const projectRoot = path.resolve(process.cwd(), "../../");
-const absoluteGeneratedDir = path.resolve(
-  projectRoot,
-  requiredEnvVars.GENERATED_DIR!
-);
-const generatedDir = absoluteGeneratedDir;
+const srcDir = path.resolve(projectRoot, "src");
+
+// Determine generated directory - if src exists, use it as base path
+const baseDir = fs.existsSync(srcDir) ? srcDir : projectRoot;
+const generatedDir = path.resolve(baseDir, requiredEnvVars.GENERATED_DIR!);
 
 const trpcRoot = (() => {
-  const srcDir = path.resolve(projectRoot, "src");
   return fs.existsSync(srcDir) ? srcDir : projectRoot;
 })();
 
