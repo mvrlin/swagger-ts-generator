@@ -2,9 +2,9 @@ import path from "path";
 import fs from "fs";
 import { generateApi, ParsedRoute } from "swagger-typescript-api";
 import { RouteConfig, ParameterConfig, Config, ProcedureConfig } from "./types";
-import { ensureDirExists, convertToZodSchema } from "./helpers";
+import { ensureDirExists, convertToZodSchema, getSchemaName } from "./helpers";
 import { OpenAPIV2, OpenAPIV3 } from "openapi-types";
-import SchemaRegistry from "./schema-registry";
+import { SchemaRegistry } from "./schema-registry";
 
 function generateRouterFile(
   routeName: string,
@@ -13,16 +13,16 @@ function generateRouterFile(
   routersDir: string
 ) {
   let content = `import { z } from 'zod';
-  import { router, publicProcedure, protectedProcedure } from '../trpc';
-  import { TRPCError } from '@trpc/server';
+import { router, publicProcedure, protectedProcedure } from '../trpc';
+import { TRPCError } from '@trpc/server';
 
-  // Schema Definitions
-  `;
+// Schema Definitions
+`;
 
   // Add schemas in dependency order
   const orderedSchemas = schemaRegistry.getOrderedSchemas();
   orderedSchemas.forEach(({ name, schema }) => {
-    content += `const ${name} = ${schema};\n\n`;
+    content += `const ${name}Schema = ${schema};\n\n`;
   });
 
   // Start router definition
@@ -36,41 +36,61 @@ function generateRouterFile(
       : "publicProcedure";
 
     // Build input schema
-    const inputSchemaParams: string[] = [];
-    if (proc.parameters.length > 0) {
-      proc.parameters.forEach((param) => {
-        inputSchemaParams.push(`    ${param.name}: ${param.schema}`);
-      });
-    }
-    if (proc.body) {
-      inputSchemaParams.push(`    data: ${proc.body.schema}`);
-    }
+    let inputSchema = "z.object({})";
 
-    const inputSchema =
-      inputSchemaParams.length > 0
-        ? `z.object({\n${inputSchemaParams.join(",\n")}\n  })`
-        : "z.object({})";
+    if (proc.parameters.length > 0 || proc.body) {
+      const schemaFields: string[] = [];
+
+      // Add path/query parameters
+      proc.parameters.forEach((param) => {
+        schemaFields.push(`${param.name}: ${param.schema}`);
+      });
+
+      // Add body parameter if it exists
+      if (proc.body) {
+        schemaFields.push(`body: ${proc.body.schema}`);
+      }
+
+      inputSchema = `z.object({\n    ${schemaFields.join(",\n    ")}\n  })`;
+    }
 
     // Add procedure implementation
     content += `
-    ${proc.name}: ${procedureType}
-      .input(${inputSchema})
-      .${proc.type}(async ({ input, ctx }) => {
-        try {
-          ${generateProcedureImplementation(proc)}
-        } catch (error) {
-          throw new TRPCError({
-            code: '${getErrorCode(proc)}',
-            message: '${getErrorMessage(proc)}',
-          });
-        }
-      }),\n`;
+  ${proc.name}: ${procedureType}
+    .input(${inputSchema})
+    .${proc.type}(async ({ input, ctx }) => {
+      try {
+        const response = await ctx.api.${proc.name}(${generateInputParams(proc)});
+        return response;
+      } catch (error) {
+        throw new TRPCError({
+          code: '${getErrorCode(proc)}',
+          message: '${getErrorMessage(proc)}',
+        });
+      }
+    }),\n`;
   });
 
   content += "});\n";
 
   // Write the file
   fs.writeFileSync(path.resolve(routersDir, `${routeName}.ts`), content);
+}
+
+function generateInputParams(proc: ProcedureConfig): string {
+  const params: string[] = [];
+
+  // Add regular parameters
+  proc.parameters.forEach((param) => {
+    params.push(`input.${param.name}`);
+  });
+
+  // Add body parameter if it exists
+  if (proc.body) {
+    params.push("input.body");
+  }
+
+  return params.join(", ");
 }
 
 function generateProcedureImplementation(proc: ProcedureConfig): string {
@@ -154,60 +174,79 @@ async function generateTrpcRouters(
       generateRouteTypes: true,
       hooks: {
         onParseSchema: (originalSchema: any, parsedSchema: any) => {
-          // Register schema with dependencies
-          const dependencies = new Set<string>();
-          const zodSchema = convertToZodSchema(parsedSchema, dependencies);
-          schemaRegistry.add(originalSchema, zodSchema, dependencies);
+          try {
+            // Get schema name
+            let schemaName = getSchemaName(originalSchema, parsedSchema);
+            if (!schemaName) return parsedSchema;
+
+            // Get dependencies
+            const dependencies = new Set<string>();
+            const zodSchema = convertToZodSchema(parsedSchema, dependencies);
+
+            // Register schema
+            schemaRegistry.add(schemaName, zodSchema, dependencies);
+
+            return parsedSchema;
+          } catch (error) {
+            console.warn("Error in onParseSchema:", error);
+            return parsedSchema;
+          }
         },
 
         onCreateRoute: (routeData: ParsedRoute) => {
-          const routeName =
-            routeData.raw.tags?.[0]?.replace(/\s+/g, "") || "common";
-          const procedures = extractProcedures(
-            routeData as ParsedRoute & {
-              raw: { parameters?: any[] };
-              request: {
-                method: string;
-                body?: {
-                  content?: {
-                    "application/json"?: {
-                      schema?: any;
+          try {
+            const routeName =
+              routeData.raw.tags?.[0]?.replace(/\s+/g, "") || "common";
+            const procedures = extractProcedures(
+              routeData as ParsedRoute & {
+                raw: { parameters?: any[] };
+                request: {
+                  method: string;
+                  body?: {
+                    content?: {
+                      "application/json"?: {
+                        schema?: any;
+                      };
                     };
                   };
                 };
-              };
-              responses?: {
-                "200"?: {
-                  content?: {
-                    "application/json"?: {
-                      schema?: any;
+                responses?: {
+                  "200"?: {
+                    content?: {
+                      "application/json"?: {
+                        schema?: any;
+                      };
                     };
                   };
                 };
-              };
-            },
-            schemaRegistry
-          );
+              },
+              schemaRegistry
+            );
 
-          // Generate router file for this route
-          generateRouterFile(routeName, procedures, schemaRegistry, routersDir);
+            // Generate router file for this route
+            generateRouterFile(
+              routeName,
+              procedures,
+              schemaRegistry,
+              routersDir
+            );
 
-          return routeData;
+            return routeData;
+          } catch (error) {
+            console.warn("Error in onCreateRoute:", error);
+            return routeData;
+          }
         },
       },
     });
 
-    // Generate context with API client integration
+    // Generate additional files
     generateContext(routersDir);
-
-    // Generate trpc.ts with proper middleware
     generateTrpcUtils(routersDir);
-
-    // Generate app router
-    const routerFiles = Array.from(
-      new Set(files.map((f) => path.basename(f.fileName, ".ts")))
+    generateAppRouter(
+      Array.from(new Set(files.map((f) => path.basename(f.fileName, ".ts")))),
+      routersDir
     );
-    generateAppRouter(routerFiles, routersDir);
 
     console.log("tRPC server files generated successfully!");
   } catch (error) {
@@ -215,6 +254,8 @@ async function generateTrpcRouters(
     throw error;
   }
 }
+
+
 
 function generateContext(routersDir: string) {
   const content = `import { inferAsyncReturnType } from '@trpc/server';
@@ -312,7 +353,7 @@ function extractProcedures(
     name: param.name,
     type: param.schema.type || "string",
     required: param.required || false,
-    schema: convertToZodSchema(param.schema, schemaRegistry),
+    schema: convertToZodSchema(param.schema, new Set()),
   }));
 
   // Handle request body
@@ -320,7 +361,7 @@ function extractProcedures(
     routeData.request.body?.content?.["application/json"]?.schema;
   const body = bodyContent
     ? {
-        schema: convertToZodSchema(bodyContent, schemaRegistry),
+        schema: convertToZodSchema(bodyContent, new Set()),
       }
     : null;
 
@@ -329,7 +370,7 @@ function extractProcedures(
     routeData.responses?.["200"]?.content?.["application/json"]?.schema;
   const response = responseContent
     ? {
-        schema: convertToZodSchema(responseContent, schemaRegistry),
+        schema: convertToZodSchema(responseContent, new Set()),
       }
     : null;
 

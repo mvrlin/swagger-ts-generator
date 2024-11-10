@@ -1,80 +1,73 @@
 import fs from "node:fs";
 import { z, ZodSchema } from "zod";
-
+import { SchemaRegistry } from "./schema-registry";
 export function ensureDirExists(dirPath: string) {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
   }
 }
-
-export function convertToZodSchema(schema: any, parsedSchemas: any): string {
+// Helper function to safely convert schema to Zod
+function convertToZodSchema(schema: any, dependencies: Set<string>): string {
   if (!schema) return "z.any()";
 
-  switch (schema.type) {
-    case "string":
-      if (schema.format === "date-time") {
-        return `z.string().datetime()${schema.required ? "" : ".optional()"}`;
+  try {
+    if (schema.$ref) {
+      const refName = schema.$ref.split("/").pop();
+      if (refName) {
+        dependencies.add(refName);
+        return `z.lazy(() => ${refName}Schema)`;
       }
-      if (schema.format === "uuid") {
-        return `z.string().uuid()${schema.required ? "" : ".optional()"}`;
-      }
-      if (schema.format === "email") {
-        return `z.string().email()${schema.required ? "" : ".optional()"}`;
-      }
-      if (schema.format === "uri") {
-        return `z.string().url()${schema.required ? "" : ".optional()"}`;
-      }
-      if (schema.enum) {
-        const enumValues = schema.enum
-          .map((value: any) => `'${value}'`)
-          .join(" | ");
-        return `z.enum([${enumValues}])${schema.required ? "" : ".optional()"}`;
-      }
-      return `z.string()${schema.required ? "" : ".optional()"}`;
+    }
 
-    case "number":
-    case "integer":
-      if (schema.minimum !== undefined && schema.maximum !== undefined) {
-        return `z.number().min(${schema.minimum}).max(${schema.maximum})${schema.required ? "" : ".optional()"}`;
+    switch (schema.type) {
+      case "object": {
+        if (!schema.properties) return "z.record(z.string(), z.any())";
+
+        const properties = Object.entries(schema.properties)
+          .map(([key, prop]: [string, any]) => {
+            const isRequired = schema.required?.includes(key);
+            const propertySchema = convertToZodSchema(prop, dependencies);
+            return `${key}: ${propertySchema}${isRequired ? "" : ".optional()"}`;
+          })
+          .join(",\n    ");
+
+        return `z.object({\n    ${properties}\n  })`;
       }
-      if (schema.minimum !== undefined) {
-        return `z.number().min(${schema.minimum})${schema.required ? "" : ".optional()"}`;
+
+      case "array": {
+        const itemSchema = convertToZodSchema(schema.items, dependencies);
+        return `z.array(${itemSchema})`;
       }
-      if (schema.maximum !== undefined) {
-        return `z.number().max(${schema.maximum})${schema.required ? "" : ".optional()"}`;
-      }
-      return `z.number()${schema.required ? "" : ".optional()"}`;
 
-    case "boolean":
-      return `z.boolean()${schema.required ? "" : ".optional()"}`;
+      case "string":
+      case "number":
+      case "boolean":
+        return `z.${schema.type}()`;
 
-    case "array":
-      if (schema.items.$ref) {
-        const refType = schema.items.$ref.split("/").pop();
-        return `z.array(z.lazy(() => ${refType}Schema))${schema.required ? "" : ".optional()"}`;
-      }
-      return `z.array(${convertToZodSchema(schema.items, parsedSchemas)})${schema.required ? "" : ".optional()"}`;
-
-    case "object":
-      if (!schema.properties) return "z.record(z.string(), z.any())";
-
-      const properties = Object.entries(schema.properties)
-        .map(([key, prop]: [string, any]) => {
-          const required = schema.required?.includes(key);
-          return `${key}: ${convertToZodSchema(prop, parsedSchemas)}${required ? "" : ".optional()"}`;
-        })
-        .join(",\n    ");
-
-      return `z.object({\n    ${properties}\n  })`;
-
-    default:
-      if (schema.$ref) {
-        const refType = schema.$ref.split("/").pop();
-        if (parsedSchemas[refType]) {
-          return `${refType}Schema`;
-        }
-        return `z.lazy(() => ${refType}Schema)`;
-      }
-      return "z.any()";
+      default:
+        return "z.any()";
+    }
+  } catch (error) {
+    console.warn("Error converting schema to Zod:", error);
+    return "z.any()";
   }
 }
+
+function getSchemaName(originalSchema: any, parsedSchema: any): string | null {
+  // Try to get name from various sources
+  const name =
+    parsedSchema?.name ||
+    originalSchema?.title ||
+    (originalSchema?.$ref && originalSchema.$ref.split("/").pop()) ||
+    null;
+
+  if (!name) return null;
+
+  // Clean the name
+  return name
+    .replace(/[^\w]/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_");
+}
+
+export { getSchemaName, convertToZodSchema };

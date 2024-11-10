@@ -12,4 +12,4 @@ import { generateTrpcServer } from "../src/trpc-server-generator";
 // generateTrpcServer
 // generateTrpcClient("./example");
 
-generateTrpcServer("./example", "https://back.lajit.com/swagger/doc.json");
+generateTrpcServer("./example/routers", "https://back.lajit.com/swagger/doc.json");
