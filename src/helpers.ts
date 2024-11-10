@@ -7,17 +7,39 @@ export function ensureDirExists(dirPath: string) {
   }
 }
 // Helper function to safely convert schema to Zod
-function convertToZodSchema(schema: any, dependencies: Set<string>): string {
+function convertToZodSchema(
+  schema: any,
+  dependencies: Set<string>,
+  schemaRegistry: SchemaRegistry
+): string {
   if (!schema) return "z.any()";
 
   try {
     // Handle references first
     if (schema.$ref) {
       const refName = schema.$ref.split("/").pop();
-      if (refName) {
-        dependencies.add(refName);
-        return `z.lazy(() => ${refName})`;
+      if (!refName) {
+        console.warn(`Invalid $ref format: ${schema.$ref}`);
+        return "z.any()";
       }
+
+      // Add to dependencies set
+      dependencies.add(refName);
+      
+      // Get the referenced schema
+      const importedSchema = schemaRegistry.get(refName);
+      if (!importedSchema) {
+        console.warn(`Schema reference not found: ${refName}`);
+        return "z.any()";
+      }
+
+      // Prevent infinite recursion by checking if the imported schema is the same as the current one
+      if (importedSchema === schema) {
+        console.warn(`Circular reference detected for schema: ${refName}`);
+        return "z.lazy(() => " + refName + ")";
+      }
+
+      return convertToZodSchema(importedSchema, dependencies, schemaRegistry);
     }
 
     switch (schema.type) {
@@ -27,7 +49,7 @@ function convertToZodSchema(schema: any, dependencies: Set<string>): string {
         const properties = Object.entries(schema.properties)
           .map(([key, prop]: [string, any]) => {
             const isRequired = schema.required?.includes(key);
-            const propertySchema = convertToZodSchema(prop, dependencies);
+            const propertySchema = convertToZodSchema(prop, dependencies, schemaRegistry);
             const description = prop.description ? `.describe(${JSON.stringify(prop.description)})` : '';
             return `${key}: ${propertySchema}${isRequired ? "" : ".optional()"}${description}`;
           })
@@ -37,7 +59,7 @@ function convertToZodSchema(schema: any, dependencies: Set<string>): string {
       }
 
       case "array": {
-        const itemSchema = convertToZodSchema(schema.items, dependencies);
+        const itemSchema = convertToZodSchema(schema.items, dependencies, schemaRegistry);
         return `z.array(${itemSchema})`;
       }
 
@@ -87,15 +109,21 @@ function convertToZodSchema(schema: any, dependencies: Set<string>): string {
 
       default:
         if (schema.oneOf) {
-          const unionSchemas = schema.oneOf.map((s: any) => convertToZodSchema(s, dependencies));
+          const unionSchemas = schema.oneOf.map((s: any) =>
+            convertToZodSchema(s, dependencies, schemaRegistry)
+          );
           return `z.union([${unionSchemas.join(", ")}])`;
         }
         if (schema.anyOf) {
-          const unionSchemas = schema.anyOf.map((s: any) => convertToZodSchema(s, dependencies));
+          const unionSchemas = schema.anyOf.map((s: any) =>
+            convertToZodSchema(s, dependencies, schemaRegistry)
+          );
           return `z.union([${unionSchemas.join(", ")}])`;
         }
         if (schema.allOf) {
-          const intersectionSchemas = schema.allOf.map((s: any) => convertToZodSchema(s, dependencies));
+          const intersectionSchemas = schema.allOf.map((s: any) =>
+            convertToZodSchema(s, dependencies, schemaRegistry)
+          );
           return `z.intersection([${intersectionSchemas.join(", ")}])`;
         }
         return "z.any()";

@@ -17,9 +17,18 @@ interface RouteConfig {
 interface ProcedureConfig {
   name: string;
   type: "query" | "mutation";
-  parameters: ParameterConfig[];
-  body: { schema: string } | null;
-  response: { schema: string } | null;
+  parameters: Array<{
+    name: string;
+    type: "path" | "query";
+    required: boolean;
+    schema: string;
+  }>;
+  body: {
+    schema: string;
+  } | null;
+  response: {
+    schema: string;
+  } | null;
   description: string;
 }
 
@@ -45,15 +54,7 @@ interface RouteConfig {
   procedures: ProcedureConfig[];
 }
 
-interface ProcedureConfig {
-  name: string;
-  type: "query" | "mutation";
-  parameters: ParameterConfig[];
-  body: { schema: string } | null;
-  response: { schema: string } | null;
-  description: string;
-}
-
+ 
 interface ParameterConfig {
   name: string;
   type: string;
