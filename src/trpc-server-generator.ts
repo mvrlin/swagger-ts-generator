@@ -13,6 +13,7 @@ import { SchemaRegistry } from "./schema-registry";
 
 function generateRouterFile(
   routeName: string,
+  routeNamespace: string,
   procedures: ProcedureConfig[],
   schemaRegistry: SchemaRegistry,
   routersDir: string
@@ -49,12 +50,12 @@ import { TRPCError } from '@trpc/server';\n\n`;
 
     // Build input schema
     const inputSchema = buildInputSchema(proc);
-
+    const apiNamespace = routeNamespace;
     content += `  ${normalizeRouteName(proc.name)}: ${procedureType}
       .input(${inputSchema})
       .${proc.type}(async ({ input, ctx }) => {
         try {
-          const response = await ctx.api.${getApiNamespace(routeName)}.${camelCase(proc.name)}(${generateInputParams(proc)});
+          const response = await ctx.api.${apiNamespace}.${camelCase(proc.name)}(input);
           return response;
         } catch (error) {
           throw new TRPCError({
@@ -105,6 +106,12 @@ function extractSchemaRefs(schema: string, usedSchemas: Set<string>) {
 }
 
 function buildInputSchema(proc: ProcedureConfig): string {
+  // If there's only one parameter and no body, return the parameter schema directly
+  if (proc.parameters?.length === 1 && !proc.body) {
+    const param = proc.parameters[0];
+    return param.schema || "z.any()";
+  }
+
   const schemaFields: string[] = [];
 
   // Handle query parameters
@@ -119,7 +126,6 @@ function buildInputSchema(proc: ProcedureConfig): string {
   // Handle request body if present
   if (proc.body) {
     if (proc.parameters?.length > 0) {
-      // If we have both query params and body, nest the body under a 'body' key
       schemaFields.push(`body: ${proc.body.schema || "z.any()"}`);
     } else {
       // If we only have body, use it directly
@@ -146,28 +152,6 @@ function normalizeRouteName(name: string): string {
   }
 
   return processedName;
-}
-
-function generateInputParams(proc: ProcedureConfig): string {
-  const params: string[] = [];
-
-  // Add query parameters
-  if (proc.parameters?.length > 0) {
-    proc.parameters.forEach((param) => {
-      params.push(`input.${param.name}`);
-    });
-  }
-
-  // Add body parameter
-  if (proc.body) {
-    if (proc.parameters?.length > 0) {
-      params.push("input.body");
-    } else {
-      params.push("input");
-    }
-  }
-
-  return params.join(", ");
 }
 
 function getErrorCode(proc: ProcedureConfig): string {
@@ -252,6 +236,7 @@ async function generateTrpcRouters(
             // Generate router file for this route
             generateRouterFile(
               routeName,
+              routeData.namespace,
               procedures,
               schemaRegistry,
               routersDir
@@ -362,20 +347,8 @@ function extractProcedures(
 }
 
 function getProcedureName(routeData: ParsedRoute): string {
-  const routeName = routeData.routeName.usage;
-  // Use namespace if available, otherwise use the first path part
-  const namespace = routeData.namespace;
-
-  // Determine the action based on method and path
-  let action = "";
-  // Use namespace as part of the resource name if available
   const resourceName = routeData.routeName.usage;
   return normalizeRouteName(resourceName);
-}
-
-function capitalize(str: string): string {
-  if (!str) return str;
-  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 function generateContext(routersDir: string, apiName: string = "Api") {
@@ -478,11 +451,3 @@ export async function generateTrpcServer(
   }
 }
 
-function getApiNamespace(routeName: string): string {
-  // Map router names to API namespaces
-  const namespaceMap: Record<string, string> = {
-    vehicle: "vehicles",
-    // Add other mappings as needed
-  };
-  return namespaceMap[routeName.toLowerCase()] || routeName.toLowerCase();
-}

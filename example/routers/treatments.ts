@@ -8,7 +8,7 @@ export const treatmentsRouter = router({
       .input(z.object({}))
       .mutation(async ({ input, ctx }) => {
         try {
-          const response = await ctx.api.t
+          const response = await ctx.api.vehicles.treatmentsDelete(input);
           return response;
         } catch (error) {
           throw new TRPCError({

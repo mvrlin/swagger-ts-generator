@@ -8,7 +8,7 @@ export const manufacturersRouter = router({
       .input(z.object({}))
       .mutation(async ({ input, ctx }) => {
         try {
-          const response = await ctx.api.manufacturers.manufacturersUpdate();
+          const response = await ctx.api.manufacturers.manufacturersUpdate(input);
           return response;
         } catch (error) {
           throw new TRPCError({

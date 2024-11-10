@@ -8,7 +8,7 @@ export const vehiclesRouter = router({
       .input(z.object({}))
       .mutation(async ({ input, ctx }) => {
         try {
-          const response = await ctx.api.vehicles.vehiclesDelete();
+          const response = await ctx.api.vehicles.vehiclesDelete(input);
           return response;
         } catch (error) {
           throw new TRPCError({

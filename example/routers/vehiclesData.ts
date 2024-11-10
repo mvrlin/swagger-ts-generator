@@ -8,7 +8,7 @@ export const vehiclesDataRouter = router({
       .input(z.object({}))
       .mutation(async ({ input, ctx }) => {
         try {
-          const response = await ctx.api.vehiclesdata.getFieldOptionsOptionsCreate();
+          const response = await ctx.api.vehiclesData.getFieldOptionsOptionsCreate(input);
           return response;
         } catch (error) {
           throw new TRPCError({

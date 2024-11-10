@@ -8,7 +8,7 @@ export const ImagesRouter = router({
       .input(z.object({}))
       .mutation(async ({ input, ctx }) => {
         try {
-          const response = await ctx.api.images.uploadCreate();
+          const response = await ctx.api.images.uploadCreate(input);
           return response;
         } catch (error) {
           throw new TRPCError({

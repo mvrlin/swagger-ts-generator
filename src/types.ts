@@ -44,11 +44,19 @@ interface RouteConfig {
   procedures: ProcedureConfig[];
 }
 
- 
+interface ProcedureConfig {
+  name: string;
+  type: "query" | "mutation";
+  parameters: ParameterConfig[];
+  body: { schema: string } | null;
+  response: { schema: string } | null;
+  description: string;
+}
 
 interface ParameterConfig {
   name: string;
-  schema: string;
+  type: string;
   required: boolean;
+  schema: string;
 }
 export { Config, defaultConfig, RouteConfig, ProcedureConfig, ParameterConfig };

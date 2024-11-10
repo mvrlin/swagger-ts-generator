@@ -11,11 +11,12 @@ function convertToZodSchema(schema: any, dependencies: Set<string>): string {
   if (!schema) return "z.any()";
 
   try {
+    // Handle references first
     if (schema.$ref) {
       const refName = schema.$ref.split("/").pop();
       if (refName) {
         dependencies.add(refName);
-        return `z.lazy(() => ${refName}Schema)`;
+        return `z.lazy(() => ${refName})`;
       }
     }
 
@@ -27,7 +28,8 @@ function convertToZodSchema(schema: any, dependencies: Set<string>): string {
           .map(([key, prop]: [string, any]) => {
             const isRequired = schema.required?.includes(key);
             const propertySchema = convertToZodSchema(prop, dependencies);
-            return `${key}: ${propertySchema}${isRequired ? "" : ".optional()"}`;
+            const description = prop.description ? `.describe(${JSON.stringify(prop.description)})` : '';
+            return `${key}: ${propertySchema}${isRequired ? "" : ".optional()"}${description}`;
           })
           .join(",\n    ");
 
@@ -39,12 +41,63 @@ function convertToZodSchema(schema: any, dependencies: Set<string>): string {
         return `z.array(${itemSchema})`;
       }
 
-      case "string":
+      case "string": {
+        let zodString = "z.string()";
+        if (schema.enum) {
+          return `z.enum([${schema.enum.map((e: string) => `"${e}"`).join(", ")}])`;
+        }
+        if (schema.format === "date-time") {
+          zodString = "z.string().datetime()";
+        }
+        if (schema.format === "email") {
+          zodString = "z.string().email()";
+        }
+        if (schema.minLength !== undefined) {
+          zodString += `.min(${schema.minLength})`;
+        }
+        if (schema.maxLength !== undefined) {
+          zodString += `.max(${schema.maxLength})`;
+        }
+        if (schema.pattern) {
+          zodString += `.regex(new RegExp("${schema.pattern}"))`;
+        }
+        return zodString;
+      }
+
       case "number":
+      case "integer": {
+        let zodNumber = schema.type === "integer" ? "z.number().int()" : "z.number()";
+        if (schema.minimum !== undefined) {
+          zodNumber += `.min(${schema.minimum})`;
+        }
+        if (schema.maximum !== undefined) {
+          zodNumber += `.max(${schema.maximum})`;
+        }
+        if (schema.multipleOf !== undefined) {
+          zodNumber += `.multipleOf(${schema.multipleOf})`;
+        }
+        return zodNumber;
+      }
+
       case "boolean":
-        return `z.${schema.type}()`;
+        return "z.boolean()";
+
+      case "null":
+        return "z.null()";
 
       default:
+        if (schema.oneOf) {
+          const unionSchemas = schema.oneOf.map((s: any) => convertToZodSchema(s, dependencies));
+          return `z.union([${unionSchemas.join(", ")}])`;
+        }
+        if (schema.anyOf) {
+          const unionSchemas = schema.anyOf.map((s: any) => convertToZodSchema(s, dependencies));
+          return `z.union([${unionSchemas.join(", ")}])`;
+        }
+        if (schema.allOf) {
+          const intersectionSchemas = schema.allOf.map((s: any) => convertToZodSchema(s, dependencies));
+          return `z.intersection([${intersectionSchemas.join(", ")}])`;
+        }
         return "z.any()";
     }
   } catch (error) {

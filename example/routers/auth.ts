@@ -8,7 +8,7 @@ export const authRouter = router({
       .input(z.object({}))
       .mutation(async ({ input, ctx }) => {
         try {
-          const response = await ctx.api.auth.terminateAllCreate();
+          const response = await ctx.api.auth.terminateAllCreate(input);
           return response;
         } catch (error) {
           throw new TRPCError({

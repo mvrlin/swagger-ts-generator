@@ -8,7 +8,7 @@ export const excelRouter = router({
       .input(z.object({}))
       .mutation(async ({ input, ctx }) => {
         try {
-          const response = await ctx.api.excel.processExcelCreate();
+          const response = await ctx.api.exportExcel.processExcelCreate(input);
           return response;
         } catch (error) {
           throw new TRPCError({
