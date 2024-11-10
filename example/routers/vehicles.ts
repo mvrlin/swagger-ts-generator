@@ -4,16 +4,16 @@ import { TRPCError } from '@trpc/server';
 
 // Schema Definitions
 export const vehiclesRouter = router({
-  deleteVehiclesDelete: protectedProcedure
+  vehiclesDelete: protectedProcedure
       .input(z.object({}))
       .mutation(async ({ input, ctx }) => {
         try {
-          const response = await ctx.api.deleteVehiclesDelete();
+          const response = await ctx.api.vehicles.vehiclesDelete();
           return response;
         } catch (error) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: `Error in mutation 'deleteVehiclesDelete': ${error instanceof Error ? error.message : 'Unknown error'}`,
+            message: `Error in mutation 'vehiclesDelete': ${error instanceof Error ? error.message : 'Unknown error'}`,
             cause: error,
           });
         }

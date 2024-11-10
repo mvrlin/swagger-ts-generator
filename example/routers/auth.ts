@@ -4,16 +4,16 @@ import { TRPCError } from '@trpc/server';
 
 // Schema Definitions
 export const authRouter = router({
-  postTerminateAllCreate: protectedProcedure
+  terminateAllCreate: protectedProcedure
       .input(z.object({}))
       .mutation(async ({ input, ctx }) => {
         try {
-          const response = await ctx.api.postTerminateAllCreate();
+          const response = await ctx.api.auth.terminateAllCreate();
           return response;
         } catch (error) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: `Error in mutation 'postTerminateAllCreate': ${error instanceof Error ? error.message : 'Unknown error'}`,
+            message: `Error in mutation 'terminateAllCreate': ${error instanceof Error ? error.message : 'Unknown error'}`,
             cause: error,
           });
         }

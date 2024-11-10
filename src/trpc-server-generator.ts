@@ -2,7 +2,12 @@ import path from "path";
 import fs from "fs";
 import { generateApi, ParsedRoute } from "swagger-typescript-api";
 import { RouteConfig, ParameterConfig, Config, ProcedureConfig } from "./types";
-import { ensureDirExists, convertToZodSchema, getSchemaName } from "./helpers";
+import {
+  ensureDirExists,
+  convertToZodSchema,
+  getSchemaName,
+  camelCase,
+} from "./helpers";
 import { OpenAPIV2, OpenAPIV3 } from "openapi-types";
 import { SchemaRegistry } from "./schema-registry";
 
@@ -49,7 +54,7 @@ import { TRPCError } from '@trpc/server';\n\n`;
       .input(${inputSchema})
       .${proc.type}(async ({ input, ctx }) => {
         try {
-          const response = await ctx.api.${normalizeRouteName(proc.name)}(${generateInputParams(proc)});
+          const response = await ctx.api.${getApiNamespace(routeName)}.${camelCase(proc.name)}(${generateInputParams(proc)});
           return response;
         } catch (error) {
           throw new TRPCError({
@@ -180,7 +185,8 @@ function getErrorMessage(proc: ProcedureConfig): string {
 
 async function generateTrpcRouters(
   swaggerUrl: string,
-  routersDir: string
+  routersDir: string,
+  apiName: string
 ): Promise<void> {
   try {
     // Initialize schema registry
@@ -261,7 +267,7 @@ async function generateTrpcRouters(
     });
 
     // Generate additional files
-    generateContext(routersDir);
+    generateContext(routersDir, apiName);
     generateTrpcUtils(routersDir);
     generateAppRouter(
       Array.from(new Set(files.map((f) => path.basename(f.fileName, ".ts")))),
@@ -356,23 +362,15 @@ function extractProcedures(
 }
 
 function getProcedureName(routeData: ParsedRoute): string {
-  // Use operationId if available
-  let name = (routeData.raw as any).operationId;
-  if (name) {
-    return normalizeRouteName(name);
-  }
+  const routeName = routeData.routeName.usage;
+  // Use namespace if available, otherwise use the first path part
+  const namespace = routeData.namespace;
 
-  // Generate name from method and path
-  const method = routeData.request.method.toLowerCase();
-  const pathParts = routeData.routeName.usage
-    .split("/")
-    .filter(Boolean) // Remove empty strings
-    .map((part) => part.replace(/\{|\}/g, "")) // Remove braces from path parameters
-    .map((part) => capitalize(part));
-
-  name = [method, ...pathParts].join("");
-
-  return normalizeRouteName(name);
+  // Determine the action based on method and path
+  let action = "";
+  // Use namespace as part of the resource name if available
+  const resourceName = routeData.routeName.usage;
+  return normalizeRouteName(resourceName);
 }
 
 function capitalize(str: string): string {
@@ -380,11 +378,11 @@ function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
-function generateContext(routersDir: string) {
+function generateContext(routersDir: string, apiName: string = "Api") {
   const content = `import { inferAsyncReturnType } from '@trpc/server';
   import { CreateNextContextOptions } from '@trpc/server/adapters/next';
   import { getSession } from 'next-auth/react';
-  import { Api } from '../generated/api';
+  import { Api } from "./__generated__/${apiName}";
 
   export async function createContext({ req, res }: CreateNextContextOptions) {
     const session = await getSession({ req });
@@ -461,7 +459,8 @@ function generateAppRouter(routerFiles: string[], routersDir: string) {
 }
 export async function generateTrpcServer(
   routersDir: string,
-  swaggerUrl: string
+  swaggerUrl: string,
+  apiName: string
 ): Promise<void> {
   if (!routersDir || !swaggerUrl) {
     throw new Error("routersDir and swaggerUrl are required");
@@ -471,10 +470,19 @@ export async function generateTrpcServer(
   ensureDirExists(routersDir);
 
   try {
-    await generateTrpcRouters(swaggerUrl, routersDir);
+    await generateTrpcRouters(swaggerUrl, routersDir, apiName);
   } catch (error) {
     throw new Error(
       `Failed to generate tRPC server: ${error instanceof Error ? error.message : "Unknown error"}`
     );
   }
+}
+
+function getApiNamespace(routeName: string): string {
+  // Map router names to API namespaces
+  const namespaceMap: Record<string, string> = {
+    vehicle: "vehicles",
+    // Add other mappings as needed
+  };
+  return namespaceMap[routeName.toLowerCase()] || routeName.toLowerCase();
 }
