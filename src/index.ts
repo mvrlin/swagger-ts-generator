@@ -48,7 +48,7 @@ if (missingVars.length > 0) {
 }
 
 // Resolve paths
-const projectRoot = path.resolve(process.cwd(), "../../");
+const projectRoot = process.cwd();
 const srcDir = path.resolve(projectRoot, "src");
 
 // Determine generated directory - if src exists, use it as base path
