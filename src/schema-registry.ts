@@ -3,21 +3,51 @@ export class SchemaRegistry {
   private dependencies: Map<string, Set<string>> = new Map();
 
   add(name: string, schema: string, dependencies: Set<string> = new Set()) {
-    this.schemas.set(this.normalizeSchemaName(name), schema);
-    this.dependencies.set(this.normalizeSchemaName(name), dependencies);
+    const normalizedName = this.normalizeSchemaName(name);
+    if (!normalizedName) return;
+
+    // Remove duplicate "Schema" suffixes
+    const schemaName = normalizedName.endsWith("Schema")
+      ? normalizedName
+      : `${normalizedName}Schema`;
+
+    this.schemas.set(schemaName, schema);
+    this.dependencies.set(schemaName, dependencies);
   }
 
   get(name: string): string | undefined {
-    return this.schemas.get(this.normalizeSchemaName(name));
+    const normalizedName = this.normalizeSchemaName(name);
+    return normalizedName ? this.schemas.get(normalizedName) : undefined;
   }
 
-  private normalizeSchemaName(name: string): string {
-    // Convert names like "Model.User" to "ModelUserSchema"
-    return name.replace(/[^\w]/g, "") + "Schema";
-  }
+  normalizeSchemaName(input: any): string | undefined {
+    if (!input) return undefined;
 
-  NormalizeSchemaName(name: string): string {
-    return name.replace(/[^\w]/g, "") + "Schema";
+    let name: string;
+    if (typeof input === "string") {
+      name = input;
+    } else if (typeof input === "object") {
+      if (input.$ref) {
+        const parts = input.$ref.split("/");
+        name = parts[parts.length - 1];
+      } else if (input.title) {
+        name = input.title;
+      } else {
+        return undefined;
+      }
+    } else {
+      return undefined;
+    }
+
+    // Handle fully qualified names (e.g. "Model.User" or "data.ErrorResponse")
+    const parts = name.split(/[^\w]+/);
+
+    // Properly capitalize parts
+    const normalized = parts
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join("");
+
+    return normalized;
   }
 
   getOrderedSchemas(): Array<{ name: string; schema: string }> {
@@ -39,14 +69,12 @@ export class SchemaRegistry {
       }
     };
 
-    for (const name of this.schemas.keys()) {
+    // Sort schema names for consistent ordering
+    const sortedNames = Array.from(this.schemas.keys()).sort();
+    for (const name of sortedNames) {
       visit(name);
     }
 
     return ordered;
-  }
-
-  exportSchema(name: string): string {
-    return this.get(name) || "";
   }
 }

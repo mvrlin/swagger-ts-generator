@@ -14,15 +14,22 @@ function generateRouterFile(
 ) {
   let content = `import { z } from 'zod';
 import { router, publicProcedure, protectedProcedure } from '../trpc';
-import { TRPCError } from '@trpc/server';
+import { TRPCError } from '@trpc/server';\n\n`;
 
-// Schema Definitions
-`;
+  // Add schemas
+  const usedSchemas = new Set<string>();
+  procedures.forEach((proc) => {
+    collectUsedSchemas(proc, usedSchemas);
+  });
 
-  // Add schemas in dependency order
-  const orderedSchemas = schemaRegistry.getOrderedSchemas();
+  // Generate schema definitions
+  content += "// Schema Definitions\n";
+  const orderedSchemas = schemaRegistry
+    .getOrderedSchemas()
+    .filter(({ name }) => usedSchemas.has(name));
+
   orderedSchemas.forEach(({ name, schema }) => {
-    content += `const ${name}Schema = ${schema};\n\n`;
+    content += `export const ${name} = ${schema};\n\n`;
   });
 
   // Start router definition
@@ -36,39 +43,23 @@ import { TRPCError } from '@trpc/server';
       : "publicProcedure";
 
     // Build input schema
-    let inputSchema = "z.object({})";
+    const inputSchema = buildInputSchema(proc);
 
-    if (proc.parameters.length > 0 || proc.body) {
-      const schemaFields: string[] = [];
-
-      // Add path/query parameters
-      proc.parameters.forEach((param) => {
-        schemaFields.push(`${param.name}: ${param.schema}`);
-      });
-
-      // Add body parameter if it exists
-      if (proc.body) {
-        schemaFields.push(`body: ${proc.body.schema}`);
-      }
-
-      inputSchema = `z.object({\n    ${schemaFields.join(",\n    ")}\n  })`;
-    }
-
-    // Add procedure implementation
-    content += `
-  ${proc.name}: ${procedureType}
-    .input(${inputSchema})
-    .${proc.type}(async ({ input, ctx }) => {
-      try {
-        const response = await ctx.api.${proc.name}(${generateInputParams(proc)});
-        return response;
-      } catch (error) {
-        throw new TRPCError({
-          code: '${getErrorCode(proc)}',
-          message: '${getErrorMessage(proc)}',
-        });
-      }
-    }),\n`;
+    content += `  ${normalizeRouteName(proc.name)}: ${procedureType}
+      .input(${inputSchema})
+      .${proc.type}(async ({ input, ctx }) => {
+        try {
+          const response = await ctx.api.${normalizeRouteName(proc.name)}(${generateInputParams(proc)});
+          return response;
+        } catch (error) {
+          throw new TRPCError({
+            code: '${getErrorCode(proc)}',
+            message: ${getErrorMessage(proc)},
+            cause: error,
+          });
+        }
+      }),
+`;
   });
 
   content += "});\n";
@@ -77,85 +68,114 @@ import { TRPCError } from '@trpc/server';
   fs.writeFileSync(path.resolve(routersDir, `${routeName}.ts`), content);
 }
 
+function collectUsedSchemas(proc: ProcedureConfig, usedSchemas: Set<string>) {
+  // Check parameters
+  proc.parameters?.forEach((param) => {
+    if (param.schema) {
+      extractSchemaRefs(param.schema, usedSchemas);
+    }
+  });
+
+  // Check request body
+  if (proc.body?.schema) {
+    extractSchemaRefs(proc.body.schema, usedSchemas);
+  }
+
+  // Check response
+  if (proc.response?.schema) {
+    extractSchemaRefs(proc.response.schema, usedSchemas);
+  }
+}
+
+function extractSchemaRefs(schema: string, usedSchemas: Set<string>) {
+  const refs = schema.match(/z\.lazy\(\(\) => (\w+)\)/g);
+  if (refs) {
+    refs.forEach((ref) => {
+      const schemaName = ref.match(/=> (\w+)/)?.[1];
+      if (schemaName) {
+        usedSchemas.add(schemaName);
+      }
+    });
+  }
+}
+
+function buildInputSchema(proc: ProcedureConfig): string {
+  const schemaFields: string[] = [];
+
+  // Handle query parameters
+  if (proc.parameters?.length > 0) {
+    proc.parameters.forEach((param) => {
+      schemaFields.push(
+        `${param.name}: ${param.schema || "z.any()"}${param.required ? "" : ".optional()"}`
+      );
+    });
+  }
+
+  // Handle request body if present
+  if (proc.body) {
+    if (proc.parameters?.length > 0) {
+      // If we have both query params and body, nest the body under a 'body' key
+      schemaFields.push(`body: ${proc.body.schema || "z.any()"}`);
+    } else {
+      // If we only have body, use it directly
+      return proc.body.schema || "z.object({})";
+    }
+  }
+
+  // If no fields, return empty object schema
+  if (schemaFields.length === 0) {
+    return "z.object({})";
+  }
+
+  return `z.object({\n    ${schemaFields.join(",\n    ")}\n  })`;
+}
+
+function normalizeRouteName(name: string): string {
+  if (!name) return "operation";
+
+  // Replace invalid characters and ensure the name starts with a letter or underscore
+  let processedName = name.replace(/[^a-zA-Z0-9_]/g, "_");
+
+  if (!/^[a-zA-Z_]/.test(processedName)) {
+    processedName = "_" + processedName;
+  }
+
+  return processedName;
+}
+
 function generateInputParams(proc: ProcedureConfig): string {
   const params: string[] = [];
 
-  // Add regular parameters
-  proc.parameters.forEach((param) => {
-    params.push(`input.${param.name}`);
-  });
+  // Add query parameters
+  if (proc.parameters?.length > 0) {
+    proc.parameters.forEach((param) => {
+      params.push(`input.${param.name}`);
+    });
+  }
 
-  // Add body parameter if it exists
+  // Add body parameter
   if (proc.body) {
-    params.push("input.body");
+    if (proc.parameters?.length > 0) {
+      params.push("input.body");
+    } else {
+      params.push("input");
+    }
   }
 
   return params.join(", ");
 }
 
-function generateProcedureImplementation(proc: ProcedureConfig): string {
-  switch (proc.type) {
-    case "query":
-      if (
-        proc.name.startsWith("get") &&
-        proc.parameters.some((p) => p.name === "id")
-      ) {
-        return `
-          const response = await ctx.api.${proc.name}(input.id);
-          return response;`;
-      } else {
-        return `
-          const response = await ctx.api.${proc.name}(input);
-          return response;`;
-      }
-
-    case "mutation":
-      if (proc.name.startsWith("create")) {
-        return `
-          const response = await ctx.api.${proc.name}Create(input.data);
-          return response;`;
-      } else if (proc.name.startsWith("update")) {
-        return `
-          const response = await ctx.api.${proc.name}(input.id, input.data);
-          return response;`;
-      } else if (proc.name.startsWith("delete")) {
-        return `
-          await ctx.api.${proc.name}(input.id);
-          return { success: true };`;
-      } else {
-        return `
-          const response = await ctx.api.${proc.name}(input);
-          return response;`;
-      }
-  }
-}
-
 function getErrorCode(proc: ProcedureConfig): string {
-  switch (proc.type) {
-    case "query":
-      return proc.name.startsWith("get")
-        ? "NOT_FOUND"
-        : "INTERNAL_SERVER_ERROR";
-    case "mutation":
-      return "BAD_REQUEST";
+  if (proc.type === "query") {
+    return proc.name.toLowerCase().includes("get")
+      ? "NOT_FOUND"
+      : "INTERNAL_SERVER_ERROR";
   }
+  return "BAD_REQUEST";
 }
 
 function getErrorMessage(proc: ProcedureConfig): string {
-  const operation = proc.name.startsWith("get")
-    ? "fetch"
-    : proc.name.startsWith("create")
-      ? "create"
-      : proc.name.startsWith("update")
-        ? "update"
-        : proc.name.startsWith("delete")
-          ? "delete"
-          : "process";
-
-  const resource = proc.name
-    .replace(/(get|create|update|delete)/, "")
-    .toLowerCase();
-  return `Failed to ${operation} ${resource}`;
+  return `\`Error in ${proc.type} '${normalizeRouteName(proc.name)}': \${error instanceof Error ? error.message : 'Unknown error'}\``;
 }
 
 async function generateTrpcRouters(
@@ -199,7 +219,7 @@ async function generateTrpcRouters(
               routeData.raw.tags?.[0]?.replace(/\s+/g, "") || "common";
             const procedures = extractProcedures(
               routeData as ParsedRoute & {
-                raw: { parameters?: any[] };
+                raw: { parameters?: any[]; operationId?: string };
                 request: {
                   method: string;
                   body?: {
@@ -211,7 +231,7 @@ async function generateTrpcRouters(
                   };
                 };
                 responses?: {
-                  "200"?: {
+                  [status: string]: {
                     content?: {
                       "application/json"?: {
                         schema?: any;
@@ -255,7 +275,110 @@ async function generateTrpcRouters(
   }
 }
 
+function extractProcedures(
+  routeData: ParsedRoute & {
+    raw: {
+      operationId?: string;
+      parameters?: Array<{
+        name: string;
+        schema: { type?: string };
+        required?: boolean;
+      }>;
+    };
+    path?: string;
+    method?: string;
+    request: {
+      method: string;
+      body?: {
+        content?: {
+          "application/json"?: {
+            schema?: any;
+          };
+        };
+      };
+    };
+    responses?: {
+      [status: string]: {
+        content?: {
+          "application/json"?: {
+            schema?: any;
+          };
+        };
+      };
+    };
+  },
+  schemaRegistry: SchemaRegistry
+): ProcedureConfig[] {
+  const procedures: ProcedureConfig[] = [];
 
+  // Extract basic info
+  const procedureType =
+    routeData.request.method.toLowerCase() === "get" ? "query" : "mutation";
+
+  const procedureName = getProcedureName(routeData);
+
+  // Extract parameters
+  const parameters = (routeData.raw.parameters || []).map((param: any) => ({
+    name: param.name,
+    type: param.schema.type || "string",
+    required: param.required || false,
+    schema: convertToZodSchema(param.schema, new Set()),
+  }));
+
+  // Handle request body
+  const bodyContent =
+    routeData.request.body?.content?.["application/json"]?.schema;
+  const body = bodyContent
+    ? {
+        schema: convertToZodSchema(bodyContent, new Set()),
+      }
+    : null;
+
+  // Handle response
+  const responseContent =
+    routeData.responses?.["200"]?.content?.["application/json"]?.schema;
+  const response = responseContent
+    ? {
+        schema: convertToZodSchema(responseContent, new Set()),
+      }
+    : null;
+
+  procedures.push({
+    name: procedureName,
+    type: procedureType,
+    parameters,
+    body,
+    response,
+    description: routeData.jsDocLines || "",
+  });
+
+  return procedures;
+}
+
+function getProcedureName(routeData: ParsedRoute): string {
+  // Use operationId if available
+  let name = (routeData.raw as any).operationId;
+  if (name) {
+    return normalizeRouteName(name);
+  }
+
+  // Generate name from method and path
+  const method = routeData.request.method.toLowerCase();
+  const pathParts = routeData.routeName.usage
+    .split("/")
+    .filter(Boolean) // Remove empty strings
+    .map((part) => part.replace(/\{|\}/g, "")) // Remove braces from path parameters
+    .map((part) => capitalize(part));
+
+  name = [method, ...pathParts].join("");
+
+  return normalizeRouteName(name);
+}
+
+function capitalize(str: string): string {
+  if (!str) return str;
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
 
 function generateContext(routersDir: string) {
   const content = `import { inferAsyncReturnType } from '@trpc/server';
@@ -309,81 +432,6 @@ function generateTrpcUtils(routersDir: string) {
   export const protectedProcedure = t.procedure.use(isAuthed);`;
 
   fs.writeFileSync(path.resolve(routersDir, "../trpc.ts"), utilsContent);
-}
-function extractProcedures(
-  routeData: ParsedRoute & {
-    raw: {
-      parameters?: Array<{
-        name: string;
-        schema: { type?: string };
-        required?: boolean;
-      }>;
-    };
-    request: {
-      method: string;
-      body?: {
-        content?: {
-          "application/json"?: {
-            schema?: any;
-          };
-        };
-      };
-    };
-    responses?: {
-      "200"?: {
-        content?: {
-          "application/json"?: {
-            schema?: any;
-          };
-        };
-      };
-    };
-  },
-  schemaRegistry: SchemaRegistry
-): ProcedureConfig[] {
-  const procedures: ProcedureConfig[] = [];
-
-  // Extract basic info
-  const procedureType =
-    routeData.request.method.toLowerCase() === "get" ? "query" : "mutation";
-  const procedureName = routeData.id;
-
-  // Extract parameters
-  const parameters = (routeData.raw.parameters || []).map((param: any) => ({
-    name: param.name,
-    type: param.schema.type || "string",
-    required: param.required || false,
-    schema: convertToZodSchema(param.schema, new Set()),
-  }));
-
-  // Handle request body
-  const bodyContent =
-    routeData.request.body?.content?.["application/json"]?.schema;
-  const body = bodyContent
-    ? {
-        schema: convertToZodSchema(bodyContent, new Set()),
-      }
-    : null;
-
-  // Handle response
-  const responseContent =
-    routeData.responses?.["200"]?.content?.["application/json"]?.schema;
-  const response = responseContent
-    ? {
-        schema: convertToZodSchema(responseContent, new Set()),
-      }
-    : null;
-
-  procedures.push({
-    name: procedureName,
-    type: procedureType,
-    parameters,
-    body,
-    response,
-    description: routeData.jsDocLines || "",
-  });
-
-  return procedures;
 }
 function generateAppRouter(routerFiles: string[], routersDir: string) {
   const imports = routerFiles
