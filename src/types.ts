@@ -9,6 +9,7 @@ interface Config {
 }
 interface RouteConfig {
   name: string;
+  namespace: string;
   description: string;
   procedures: ProcedureConfig[];
 }

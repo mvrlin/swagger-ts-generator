@@ -11,67 +11,70 @@ import {
 import { OpenAPIV2, OpenAPIV3 } from "openapi-types";
 import { SchemaRegistry } from "./schema-registry";
 
-function generateRouterFile(
-  routeName: string,
-  routeNamespace: string,
-  procedures: ProcedureConfig[],
-  schemaRegistry: SchemaRegistry,
-  routersDir: string
-) {
-  let content = `import { z } from 'zod';
-import { router, publicProcedure, protectedProcedure } from '../trpc';
-import { TRPCError } from '@trpc/server';\n\n`;
+function generateRouterFile(route: RouteConfig, routersDir: string) {
+  const imports = new Set<string>([
+    "import { z } from 'zod';",
+    "import { router, publicProcedure, protectedProcedure } from '../trpc';",
+    "import { TRPCError } from '@trpc/server';",
+  ]);
 
-  // Add schemas
-  const usedSchemas = new Set<string>();
-  procedures.forEach((proc) => {
-    collectUsedSchemas(proc, usedSchemas);
-  });
+  const procedures: string[] = [];
 
-  // Generate schema definitions
-  content += "// Schema Definitions\n";
-  const orderedSchemas = schemaRegistry
-    .getOrderedSchemas()
-    .filter(({ name }) => usedSchemas.has(name));
-
-  orderedSchemas.forEach(({ name, schema }) => {
-    content += `export const ${name} = ${schema};\n\n`;
-  });
-
-  // Start router definition
-  content += `export const ${routeName}Router = router({\n`;
-
-  // Add procedures
-  procedures.forEach((proc) => {
-    const isProtected = proc.type === "mutation";
-    const procedureType = isProtected
-      ? "protectedProcedure"
-      : "publicProcedure";
-
-    // Build input schema
+  route.procedures.forEach((proc) => {
     const inputSchema = buildInputSchema(proc);
-    const apiNamespace = routeNamespace;
-    content += `  ${normalizeRouteName(proc.name)}: ${procedureType}
-      .input(${inputSchema})
-      .${proc.type}(async ({ input, ctx }) => {
-        try {
-          const response = await ctx.api.${apiNamespace}.${camelCase(proc.name)}(input);
-          return response;
-        } catch (error) {
-          throw new TRPCError({
-            code: '${getErrorCode(proc)}',
-            message: ${getErrorMessage(proc)},
-            cause: error,
-          });
-        }
-      }),
-`;
+
+    const procedureType =
+      proc.type === "mutation" ? "protectedProcedure" : "publicProcedure";
+
+    const apiCallArgs = generateApiCallArguments(proc);
+
+    const procedure = `  ${normalizeRouteName(proc.name)}: ${procedureType}
+    .input(${inputSchema})
+    .${proc.type}(async ({ input, ctx }) => {
+      try {
+        const response = await ctx.api.${route.namespace}.${camelCase(proc.name)}(${apiCallArgs});
+        return response;
+      } catch (error) {
+        throw new TRPCError({
+          code: '${getErrorCode(proc)}',
+          message: ${getErrorMessage(proc)},
+          cause: error,
+        });
+      }
+    })`;
+
+    procedures.push(procedure);
   });
 
-  content += "});\n";
+  const routerContent = `${Array.from(imports).join("\n")}
 
-  // Write the file
-  fs.writeFileSync(path.resolve(routersDir, `${routeName}.ts`), content);
+export const ${route.name}Router = router({
+${procedures.join(",\n\n")}
+});`;
+
+  fs.writeFileSync(path.resolve(routersDir, `${route.name}.ts`), routerContent);
+}
+
+function generateApiCallArguments(proc: ProcedureConfig): string {
+  if (proc.type === "mutation") {
+    return "{ ...input }";
+  }
+
+  const args: string[] = [];
+
+  // Add path parameters
+  proc.parameters?.forEach((param) => {
+    if (param.type === "path") {
+      args.push(`input.${param.name}`);
+    }
+  });
+
+  // Add query parameters
+  if (proc.parameters?.some((p) => p.type === "query")) {
+    args.push("input.params");
+  }
+
+  return args.length ? args.join(", ") : "{}";
 }
 
 function collectUsedSchemas(proc: ProcedureConfig, usedSchemas: Set<string>) {
@@ -106,31 +109,36 @@ function extractSchemaRefs(schema: string, usedSchemas: Set<string>) {
 }
 
 function buildInputSchema(proc: ProcedureConfig): string {
-  // If there's only one parameter and no body, return the parameter schema directly
-  if (proc.parameters?.length === 1 && !proc.body) {
-    const param = proc.parameters[0];
-    return param.schema || "z.any()";
+  if (proc.type === "mutation" && proc.body) {
+    return proc.body.schema || "z.object({})";
   }
 
   const schemaFields: string[] = [];
 
-  // Handle query parameters
-  if (proc.parameters?.length > 0) {
-    proc.parameters.forEach((param) => {
-      schemaFields.push(
-        `${param.name}: ${param.schema || "z.any()"}${param.required ? "" : ".optional()"}`
-      );
-    });
+  // Handle path parameters
+  proc.parameters?.forEach((param) => {
+    if (param.type === "path") {
+      schemaFields.push(`${param.name}: ${param.schema || "z.any()"}`);
+    }
+  });
+
+  // Handle request body
+  if (proc.body) {
+    // Use the body schema directly without trying to access .shape
+    schemaFields.push(`...${proc.body.schema || "z.object({})"}`);
   }
 
-  // Handle request body if present
-  if (proc.body) {
-    if (proc.parameters?.length > 0) {
-      schemaFields.push(`body: ${proc.body.schema || "z.any()"}`);
-    } else {
-      // If we only have body, use it directly
-      return proc.body.schema || "z.object({})";
-    }
+  // Handle query parameters
+  const queryParams = proc.parameters?.filter((p) => p.type === "query");
+  if (queryParams?.length > 0) {
+    schemaFields.push(
+      `params: z.object({${queryParams
+        .map(
+          (param) =>
+            `${param.name}: ${param.schema || "z.any()"}${param.required ? "" : ".optional()"}`
+        )
+        .join(",\n    ")}}).optional()`
+    );
   }
 
   // If no fields, return empty object schema
@@ -169,186 +177,112 @@ function getErrorMessage(proc: ProcedureConfig): string {
 
 async function generateTrpcRouters(
   swaggerUrl: string,
-  routersDir: string,
-  apiName: string
+  routersDir: string
 ): Promise<void> {
-  try {
-    // Initialize schema registry
-    const schemaRegistry = new SchemaRegistry();
+  const routes: RouteConfig[] = [];
 
-    // Parse OpenAPI spec
+  try {
     const { files } = await generateApi({
       name: "temp-api.ts",
       url: swaggerUrl,
+      templates: path.resolve(__dirname, "./templates"),
       generateClient: false,
       generateRouteTypes: true,
       hooks: {
-        onParseSchema: (originalSchema: any, parsedSchema: any) => {
-          try {
-            // Get schema name
-            let schemaName = getSchemaName(originalSchema, parsedSchema);
-            if (!schemaName) return parsedSchema;
-
-            // Get dependencies
-            const dependencies = new Set<string>();
-            const zodSchema = convertToZodSchema(parsedSchema, dependencies);
-
-            // Register schema
-            schemaRegistry.add(schemaName, zodSchema, dependencies);
-
-            return parsedSchema;
-          } catch (error) {
-            console.warn("Error in onParseSchema:", error);
-            return parsedSchema;
-          }
-        },
-
         onCreateRoute: (routeData: ParsedRoute) => {
-          try {
-            const routeName =
-              routeData.raw.tags?.[0]?.replace(/\s+/g, "") || "common";
-            const procedures = extractProcedures(
-              routeData as ParsedRoute & {
-                raw: { parameters?: any[]; operationId?: string };
-                request: {
-                  method: string;
-                  body?: {
-                    content?: {
-                      "application/json"?: {
-                        schema?: any;
-                      };
-                    };
-                  };
-                };
-                responses?: {
-                  [status: string]: {
-                    content?: {
-                      "application/json"?: {
-                        schema?: any;
-                      };
-                    };
-                  };
-                };
-              },
-              schemaRegistry
-            );
-
-            // Generate router file for this route
-            generateRouterFile(
-              routeName,
-              routeData.namespace,
-              procedures,
-              schemaRegistry,
-              routersDir
-            );
-
-            return routeData;
-          } catch (error) {
-            console.warn("Error in onCreateRoute:", error);
-            return routeData;
+          const routeName = routeData.routeName.usage;
+          const path = routeData.raw.route;
+          let route = routes.find((r) => r.name === routeName);
+          if (!route) {
+            route = {
+              name: routeName,
+              namespace: routeData.namespace,
+              description: routeData.jsDocLines || "",
+              procedures: [],
+            };
+            routes.push(route);
           }
+
+          const procedureType =
+            routeData.request.method.toLowerCase() === "get"
+              ? "query"
+              : "mutation";
+          const procedureName =
+            routeData.raw.operationId ||
+            `${procedureType}${path.split("/").pop()}`;
+
+          // Extract parameters and body
+          const parameters = (routeData.parameters || []).map((param: any) => ({
+            name: param.name,
+            type: param.schema.type || "string",
+            required: param.required || false,
+            schema: convertToZodSchema(param.schema, new Set()),
+          }));
+
+          // Handle request body
+          let body: { schema: string } | null = null;
+          if (
+            routeData.raw.requestBody &&
+            "content" in routeData.raw.requestBody
+          ) {
+            const requestBody = routeData.raw
+              .requestBody as OpenAPIV3.RequestBodyObject;
+            const jsonContent = requestBody.content?.["application/json"];
+            if (jsonContent?.schema) {
+              body = {
+                schema: convertToZodSchema(jsonContent.schema, new Set()),
+              };
+            }
+          }
+
+          // Handle response
+          let response: { schema: string } | null = null;
+          if (routeData.response) {
+            const successResponse = routeData.response;
+            if (successResponse && "content" in successResponse) {
+              const jsonContent = (
+                successResponse.content as Record<string, any>
+              )?.["application/json"];
+              if (jsonContent?.schema) {
+                response = {
+                  schema: convertToZodSchema(jsonContent.schema, new Set()),
+                };
+              }
+            }
+          }
+
+          route.procedures.push({
+            name: procedureName,
+            type: procedureType,
+            parameters,
+            body,
+            response,
+            description: routeData.jsDocLines || "",
+          });
+
+          return routeData;
         },
       },
     });
 
-    // Generate additional files
-    generateContext(routersDir, apiName);
+    // Generate context and utilities
+    generateContext(routersDir);
     generateTrpcUtils(routersDir);
-    generateAppRouter(
-      Array.from(new Set(files.map((f) => path.basename(f.fileName, ".ts")))),
-      routersDir
-    );
+
+    // Generate individual router files
+    routes.forEach((route) => {
+      generateRouterFile(route, routersDir);
+    });
+
+    // Generate app router
+    const routerFiles = routes.map((route) => `${route.name}.ts`);
+    generateAppRouter(routerFiles, routersDir);
 
     console.log("tRPC server files generated successfully!");
   } catch (error) {
     console.error("Error generating tRPC server:", error);
     throw error;
   }
-}
-
-function extractProcedures(
-  routeData: ParsedRoute & {
-    raw: {
-      operationId?: string;
-      parameters?: Array<{
-        name: string;
-        schema: { type?: string };
-        required?: boolean;
-      }>;
-    };
-    path?: string;
-    method?: string;
-    request: {
-      method: string;
-      body?: {
-        content?: {
-          "application/json"?: {
-            schema?: any;
-          };
-        };
-      };
-    };
-    responses?: {
-      [status: string]: {
-        content?: {
-          "application/json"?: {
-            schema?: any;
-          };
-        };
-      };
-    };
-  },
-  schemaRegistry: SchemaRegistry
-): ProcedureConfig[] {
-  const procedures: ProcedureConfig[] = [];
-
-  // Extract basic info
-  const procedureType =
-    routeData.request.method.toLowerCase() === "get" ? "query" : "mutation";
-
-  const procedureName = getProcedureName(routeData);
-
-  // Extract parameters
-  const parameters = (routeData.raw.parameters || []).map((param: any) => ({
-    name: param.name,
-    type: param.schema.type || "string",
-    required: param.required || false,
-    schema: convertToZodSchema(param.schema, new Set()),
-  }));
-
-  // Handle request body
-  const bodyContent =
-    routeData.request.body?.content?.["application/json"]?.schema;
-  const body = bodyContent
-    ? {
-        schema: convertToZodSchema(bodyContent, new Set()),
-      }
-    : null;
-
-  // Handle response
-  const responseContent =
-    routeData.responses?.["200"]?.content?.["application/json"]?.schema;
-  const response = responseContent
-    ? {
-        schema: convertToZodSchema(responseContent, new Set()),
-      }
-    : null;
-
-  procedures.push({
-    name: procedureName,
-    type: procedureType,
-    parameters,
-    body,
-    response,
-    description: routeData.jsDocLines || "",
-  });
-
-  return procedures;
-}
-
-function getProcedureName(routeData: ParsedRoute): string {
-  const resourceName = routeData.routeName.usage;
-  return normalizeRouteName(resourceName);
 }
 
 function generateContext(routersDir: string, apiName: string = "Api") {
@@ -443,11 +377,12 @@ export async function generateTrpcServer(
   ensureDirExists(routersDir);
 
   try {
-    await generateTrpcRouters(swaggerUrl, routersDir, apiName);
+    await generateTrpcRouters(swaggerUrl, routersDir);
   } catch (error) {
     throw new Error(
       `Failed to generate tRPC server: ${error instanceof Error ? error.message : "Unknown error"}`
     );
   }
 }
+
 
