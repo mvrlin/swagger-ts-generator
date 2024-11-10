@@ -2,11 +2,14 @@
 
 import { generateApiClient } from "../src/index";
 import { generateTrpcClient } from "../src/trpc-client-generator";
+import { generateTrpcServer } from "../src/trpc-server-generator";
+// generateApiClient({
+//   apiName: "LajitApi",
+//   generatedDir: "./example/__generated__",
+//   swaggerUrl: "https://back.lajit.com/swagger/doc.json",
+// });
 
-generateApiClient({
-  apiName: "LajitApi",
-  generatedDir: "./example/__generated__",
-  swaggerUrl: "https://back.lajit.com/swagger/doc.json",
-});
+// generateTrpcServer
+// generateTrpcClient("./example");
 
-generateTrpcClient("./example");
+generateTrpcServer("./example", "https://back.lajit.com/swagger/doc.json");

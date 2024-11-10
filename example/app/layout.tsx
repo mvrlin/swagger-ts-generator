@@ -1,3 +1,4 @@
+import { TRPCProvider } from "@/_trpc";
 import { TRPCProvider } from "@/app/_trpc";
 
 export const metadata = {
@@ -13,7 +14,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <TRPCProvider>{children}</TRPCProvider>
+        <TRPCProvider><TRPCProvider>{children}</TRPCProvider></TRPCProvider>
       </body>
     </html>
   );

@@ -71,8 +71,7 @@ generateTrpcClient(trpcRoot);
 // routersdir
 const trpcServerDir = path.resolve(trpcRoot, "server");
 const routersDir = path.resolve(trpcServerDir, "routers");
-const templatesDir = path.resolve(trpcServerDir, "templates");
-generateTrpcServer(routersDir, templatesDir, requiredEnvVars.SWAGGER_URL!);
+generateTrpcServer(routersDir, requiredEnvVars.SWAGGER_URL!);
 
 console.log(`
 API files generated successfully:
@@ -81,7 +80,6 @@ API files generated successfully:
   API Name: ${requiredEnvVars.API_NAME}
   TRPC Server directory: ${trpcServerDir}
   TRPC Routers directory: ${routersDir}
-  TRPC Templates directory: ${templatesDir}
 `);
 
 export { generateApiClient };

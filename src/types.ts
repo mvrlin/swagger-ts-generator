@@ -7,6 +7,27 @@ interface Config {
   swaggerUrl: string;
   apiName: string;
 }
+interface RouteConfig {
+  name: string;
+  description: string;
+  procedures: ProcedureConfig[];
+}
+
+interface ProcedureConfig {
+  name: string;
+  type: "query" | "mutation";
+  parameters: ParameterConfig[];
+  body: { schema: string } | null;
+  response: { schema: string } | null;
+  description: string;
+}
+
+interface ParameterConfig {
+  name: string;
+  type: string;
+  required: boolean;
+  schema: string;
+}
 
 const defaultConfig: Config = {
   generatedDir: path.resolve(process.cwd(), "./src/__generated__"),
@@ -23,17 +44,7 @@ interface RouteConfig {
   procedures: ProcedureConfig[];
 }
 
-interface ProcedureConfig {
-  name: string;
-  type: "query" | "mutation";
-  parameters: ParameterConfig[];
-  body?: {
-    schema: string;
-  };
-  response?: {
-    schema: string;
-  };
-}
+ 
 
 interface ParameterConfig {
   name: string;
